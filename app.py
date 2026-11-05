@@ -3,7 +3,7 @@ import os
 import requests
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from aiogram.filters import Command
 
 from db import (
@@ -25,7 +25,7 @@ PRODUCTS = {
 }
 
 if not BOT_TOKEN:
-    raise SystemExit("BOT_TOKEN not set. Run: export BOT_TOKEN='...'")
+    raise SystemExit("BOT_TOKEN not set.")
 
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
@@ -39,7 +39,6 @@ def bread_kb():
     ])
 
 def create_bachs_checkout(order):
-    """Call Bachs API to create a checkout session. Returns checkout_url + checkout_id."""
     payload = {
         "product_cart": [
             {"product_id": PRODUCTS[order["bread_slug"]]["prod_id"], "quantity": order["qty"]}
@@ -57,10 +56,9 @@ def create_bachs_checkout(order):
     }
     resp = requests.post(BACHS_URL, json=payload, headers=headers, timeout=20)
 
-    # Bachs returns 201 Created on success
     if resp.status_code not in (200, 201):
         print("BACHS ERROR:", resp.status_code, resp.text)
-        raise Exception(f"Bachs returned {resp.status_code}. Check terminal for details.")
+        raise Exception(f"Bachs returned {resp.status_code}.")
 
     data = resp.json()
     return data["checkout_url"], data["checkout_id"]
@@ -90,6 +88,22 @@ async def myid(m: Message):
 async def start(m: Message):
     sessions[m.from_user.id] = {"step": "bread"}
     await m.answer("🍞 Welcome! Pick a bread:", reply_markup=bread_kb())
+
+@dp.message(Command("menu"))
+async def menu_cmd(m: Message):
+    await m.answer("Here is our fresh bread menu today:", reply_markup=bread_kb())
+
+@dp.message(Command("help"))
+async def help_cmd(m: Message):
+    await m.answer(
+        "🍞 **Bread Bot Help**\n\n"
+        "To order:\n"
+        "1. Type /start\n"
+        "2. Pick your bread\n"
+        "3. Enter quantity, location, and phone\n"
+        "4. Pay securely via Bachs\n\n"
+        "If your payment succeeded but the bot didn't verify, wait 10 seconds and click 'Verify' again."
+    )
 
 @dp.callback_query(F.data.startswith("bread:"))
 async def pick_bread(c: CallbackQuery):
@@ -247,8 +261,18 @@ async def text(m: Message):
 # ── MAIN ────────────────────────────────────────────────
 async def main():
     init_db()
+    
+    # This creates the blue menu button in Telegram
+    await bot.set_my_commands([
+        BotCommand(command="start", description="🍞 Start Ordering"),
+        BotCommand(command="menu", description="📜 View Bread Menu"),
+        BotCommand(command="help", description="❓ Help & Contact"),
+        BotCommand(command="orders", description="📋 Admin: View Paid Orders"),
+        BotCommand(command="myid", description="🆔 Admin: Get Chat ID"),
+    ])
+    
     print("Bot started. DB file: bread_orders.db")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    await main()
